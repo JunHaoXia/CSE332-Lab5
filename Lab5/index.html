@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>D3 Geo Map</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <!-- Include any other necessary scripts or stylesheets -->
+</head>
+<body>
+    <svg id="my_dataviz" width="600" height="400"></svg>
+    <div id="geomap-legend"></div>
+    <div id="parallel-coordinates"></div>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            geoMap()
+            parallelCoordinates()
+            function resetGraphs(){
+                d3.select('#my_dataviz').selectAll('*').remove();
+                d3.select('#parallel-coordinates').selectAll('*').remove();
+            }
+            function parallelCoordinates(){
+                // set the dimensions and margins of the graph
+                const margin = {top: 30, right: 10, bottom: 10, left: 0},
+                width = 1000 - margin.left - margin.right,
+                height = 400 - margin.top - margin.bottom;
+
+                // append the svg object to the body of the page
+                const svg = d3.select("#parallel-coordinates")
+                    .append("svg")
+                    .attr("width", width + margin.left + margin.right)
+                    .attr("height", height + margin.top + margin.bottom)
+                    .append("g")
+                    .attr("transform",
+                        `translate(${margin.left},${margin.top})`);
+
+                // Parse the Data
+                d3.csv("youtube_data.csv").then( function(data) {
+                // Extract the list of dimensions we want to keep in the plot. Here I keep all except the column called Species
+                dimensions = ['rank', 'subscribers', 'video views', 'video_views_for_the_last_30_days','highest_monthly_earnings', 'uploads', 'lowest_monthly_earnings', 'created_year']
+                data = data.filter(function(d) {
+                    // Check for NaN values in each dimension and filter out rows containing NaN
+                    for (const dimension of dimensions) {
+                        if (isNaN(d[dimension])) {
+                            return false; // Row contains NaN, so filter it out
+                        }
+                    }
+                    return true; // Keep rows without NaN values
+                });
+                // For each dimension, I build a linear scale. I store all in a y object
+                const y = {}
+                for (i in dimensions) {
+                    name = dimensions[i]
+                    y[name] = d3.scaleLinear()
+                        .domain( d3.extent(data, function(d) { return +d[name]; }) )
+                        .range([height, 0])
+                }
+
+                // Build the X scale -> it find the best position for each Y axis
+                x = d3.scalePoint()
+                    .range([0, width])
+                    .padding(1)
+                    .domain(dimensions);
+
+                // The path function take a row of the csv as input, and return x and y coordinates of the line to draw for this raw.
+                function path(d) {
+                    return d3.line()(dimensions.map(function(p) { return [x(p), y[p](d[p])]; }));
+                }
+
+                // Draw the lines
+                svg.selectAll("myPath")
+                    .data(data)
+                    .join("path")
+                    .attr("d",  path)
+                    .style("fill", "none")
+                    .style("stroke", "#69b3a2")
+                    .style("opacity", 0.5)
+
+                // Draw the axis:
+                svg.selectAll("myAxis")
+                    // For each dimension of the dataset I add a 'g' element:
+                    .data(dimensions).enter()
+                    .append("g")
+                    // I translate this element to its right position on the x axis
+                    .attr("transform", function(d) { return "translate(" + x(d) + ")"; })
+                    // And I build the axis with the call function
+                    .each(function(d) { d3.select(this).call(d3.axisLeft().scale(y[d])); })
+                    // Add axis title
+                    .append("text")
+                        .style("text-anchor", "middle")
+                        .attr("y", -9)
+                        .text(function(d) { return d; })
+                        .style("fill", "black")
+                })
+            }
+            function geoMap() {
+                const category = "subscribers";
+                // only averages and maximum for now
+                const type = "averages"
+                // Load YouTube data and world map data
+                Promise.all([
+                    d3.csv("youtube_data.csv"),
+                    d3.json("https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson"),
+                    d3.json("countries.json", function(d) {
+                        return [+d.pop, d.code];
+                    })
+                ]).then(function(data) {
+                    console.log('data is: ',data)
+                    const youtubeData = data[0];
+                    const worldMap = data[1];
+                    const country = data[2];
+                    console.log('country is: ',country)
+            
+                    // Group YouTube data by country 
+                    const groupedData = d3.group(youtubeData, d => d.Abbreviation);
+                    console.log('grouped data is: ', groupedData)
+                    // Calculate average subscribers for each country 
+                    const averages = {};
+                    groupedData.forEach((value, key) => {
+                        const totalCategorys = d3.sum(value, d => +d[category]);
+                        const averageCategorys = totalCategorys / value.length;
+                        averages[key] = averageCategorys;
+                    });
+                    const maxValues = {};
+                    groupedData.forEach((value, key) => {
+                        const categorysArray = value.map(d => +d[category]); // Extract categorys values
+                        const maxValue = d3.max(categorysArray); // Find the maximum value
+                        maxValues[key] = maxValue; // Store the maximum value for each group
+                    });
+                    console.log('averages are: ',averages);
+                    console.log('maxValues are: ',maxValues);
+                    // Create SVG
+                    const svg = d3.select("svg");
+                    const width = +svg.attr("width");
+                    const height = +svg.attr("height");
+            
+                    // Map projection
+                    const projection = d3.geoMercator()
+                        .scale(70)
+                        .center([0, 20])
+                        .translate([width / 2, height / 2]);
+                    // Extract values from 'averages'
+                    //change averages ti naxValues to set to maximum values
+                    let arraySelected = []
+                    if (type == "averages") {
+                        arraySelected = averages
+                    }
+                    else if (type == "maximum") {
+                        arraySelected = maxValues
+                    }
+                    const values = Object.values(arraySelected);
+                    console.log('values', values);
+                    
+                    // Color scale
+                    const colorScale = d3.scaleQuantize()
+                        .domain(d3.extent(values))
+                        .range(d3.schemeBlues[9]);
+                    
+                    // Create SVG for the legend
+                    const legendWidth = 600;
+                    const legendHeight = 30;
+                    const legend = d3.select("#geomap-legend")
+                        .append("svg")
+                        .attr("class", "legend")
+                        .attr("width", legendWidth)
+                        .attr("height", legendHeight);
+                    // Calculate legend elements based on the color scale
+                    const colorRange = colorScale.range().map(color => colorScale.invertExtent(color));
+                    const legendElementWidth = legendWidth / colorRange.length;
+                    
+                    const let3ToLet2Mapping = {};
+                    country.forEach(item => {
+                        const { let2, let3 } = item;
+                        if (!let3ToLet2Mapping[let3]) {
+                            let3ToLet2Mapping[let3] = [];
+                        }
+                        let3ToLet2Mapping[let3].push(let2);
+                    });
+                    console.log("let3tolet2: ",let3ToLet2Mapping);
+
+                    // Create color rectangles for legend
+                    legend.selectAll("rect")
+                        .data(colorRange)
+                        .enter().append("rect")
+                        .attr("x", (d, i) => i * legendElementWidth)
+                        .attr("y", 0)
+                        .attr("width", legendElementWidth)
+                        .attr("height", legendHeight)
+                        .style("fill", d => colorScale(d[0]));
+                    // Add text labels for legend range
+                    legend.selectAll("text")
+                        .data(colorRange)
+                        .enter().append("text")
+                        .attr("x", (d, i) => i * legendElementWidth + legendElementWidth / 2)
+                        .attr("y", legendHeight / 2 + 5)
+                        .attr("text-anchor", "middle")
+                        .style("font-size", "7px")
+                        .style("fill", "black")
+                        .text(d => `${Math.round(d[0])}-${Math.round(d[1])}`);
+                    
+                    // Draw the map
+                    const mapParts = svg.append("g")
+                        .selectAll("path")
+                        .data(worldMap.features)
+                        .join("path")
+                        // draw each country
+                        .attr("d", d3.geoPath().projection(projection))
+                        // set the color of each country based on average categorys
+                        .attr("fill", function(d) {
+                            const country = d.id;
+                            const let2id = let3ToLet2Mapping[country]
+                            const display = arraySelected[let2id] || 0;
+                            return colorScale(display);
+                        });
+                    mapParts.on('click', function(_, i) {
+                        console.log(i.id);
+                    })
+                }).catch(function(error) {
+                    // Handle error while loading data
+                    console.log("Error loading data:", error);
+                });
+            }
+        });
+    </script>
+</body>
+</html>
