@@ -12,10 +12,11 @@
     <div id="parallel-coordinates"></div>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            geoMap()
+            geoMap("subscribers")
             parallelCoordinates()
             function resetGraphs(){
                 d3.select('#my_dataviz').selectAll('*').remove();
+                d3.select('#geomap-legend').selectAll('*').remove();
                 d3.select('#parallel-coordinates').selectAll('*').remove();
             }
             function parallelCoordinates(){
@@ -76,7 +77,7 @@
                     .style("opacity", 0.5)
 
                 // Draw the axis:
-                svg.selectAll("myAxis")
+                const columns = svg.selectAll("myAxis")
                     // For each dimension of the dataset I add a 'g' element:
                     .data(dimensions).enter()
                     .append("g")
@@ -90,10 +91,15 @@
                         .attr("y", -9)
                         .text(function(d) { return d; })
                         .style("fill", "black")
+                columns.on('click', function(_, i) {
+                    console.log(i);
+                    resetGraphs()
+                    geoMap(i)
+                    parallelCoordinates()
                 })
+            })
             }
-            function geoMap() {
-                const category = "subscribers";
+            function geoMap(category) {
                 // only averages and maximum for now
                 const type = "averages"
                 // Load YouTube data and world map data
