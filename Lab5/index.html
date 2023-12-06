@@ -10,10 +10,12 @@
     <svg id="my_dataviz" width="600" height="400"></svg>
     <div id="geomap-legend"></div>
     <div id="parallel-coordinates"></div>
+    <div id="histogram-container"></div>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             geoMap("subscribers")
             parallelCoordinates()
+            displayHistogram("subscribers")
             function resetGraphs(){
                 d3.select('#my_dataviz').selectAll('*').remove();
                 d3.select('#geomap-legend').selectAll('*').remove();
@@ -92,10 +94,11 @@
                         .text(function(d) { return d; })
                         .style("fill", "black")
                 columns.on('click', function(_, i) {
-                    console.log(i);
+                    console.log("Parallel Column Clicked: ",i);
                     resetGraphs()
                     geoMap(i)
                     parallelCoordinates()
+                    displayHistogram(i)
                 })
             })
             }
@@ -110,15 +113,15 @@
                         return [+d.pop, d.code];
                     })
                 ]).then(function(data) {
-                    console.log('data is: ',data)
+                    //console.log('data is: ',data)
                     const youtubeData = data[0];
                     const worldMap = data[1];
                     const country = data[2];
-                    console.log('country is: ',country)
+                    //console.log('country is: ',country)
             
                     // Group YouTube data by country 
                     const groupedData = d3.group(youtubeData, d => d.Abbreviation);
-                    console.log('grouped data is: ', groupedData)
+                    //console.log('grouped data is: ', groupedData)
                     // Calculate average subscribers for each country 
                     const averages = {};
                     groupedData.forEach((value, key) => {
@@ -132,8 +135,8 @@
                         const maxValue = d3.max(categorysArray); // Find the maximum value
                         maxValues[key] = maxValue; // Store the maximum value for each group
                     });
-                    console.log('averages are: ',averages);
-                    console.log('maxValues are: ',maxValues);
+                    //console.log('averages are: ',averages);
+                    //console.log('maxValues are: ',maxValues);
                     // Create SVG
                     const svg = d3.select("svg");
                     const width = +svg.attr("width");
@@ -154,7 +157,7 @@
                         arraySelected = maxValues
                     }
                     const values = Object.values(arraySelected);
-                    console.log('values', values);
+                    //console.log('values', values);
                     
                     // Color scale
                     const colorScale = d3.scaleQuantize()
@@ -181,7 +184,7 @@
                         }
                         let3ToLet2Mapping[let3].push(let2);
                     });
-                    console.log("let3tolet2: ",let3ToLet2Mapping);
+                    //console.log("let3tolet2: ",let3ToLet2Mapping);
 
                     // Create color rectangles for legend
                     legend.selectAll("rect")
@@ -218,12 +221,98 @@
                             return colorScale(display);
                         });
                     mapParts.on('click', function(_, i) {
-                        console.log(i.id);
+                        console.log("Country Clicked: ",i.id);
                     })
                 }).catch(function(error) {
                     // Handle error while loading data
                     console.log("Error loading data:", error);
                 });
+            }
+            function displayHistogram(category) {
+                const svgWidth = 1800;
+                const svgHeight = 900;
+                const margin = { top: 30, right: 30, bottom: 30, left: 50 };
+                const chartWidth = svgWidth - margin.left - margin.right;
+                const chartHeight = svgHeight - margin.top - margin.bottom;
+                // Select the proper container and save it as a variable
+                const svg = d3.select('#histogram-container')
+                    .append('svg')
+                    .attr('width', svgWidth)
+                    .attr('height', svgHeight);
+                d3.csv("youtube_data.csv").then(function(data) {
+                    // Clean data up to prevent nan values from appearing
+                    console.log("data before filtering",data);
+                    const filteredData = data.map(function(d) {
+                        return +d[category]; // Convert to number
+                    }).filter(function(value) {
+                        return !isNaN(value); // Filter out NaN values
+                    });
+                    console.log("data after filtering:", filteredData);
+                    // Scaling the x axis 
+                    const xScale = d3.scaleLinear()
+                        .domain([Math.min(...data), Math.max(...data)])
+                        .range([margin.left, chartWidth]);
+                    // Minor tweaks to number of bars to allow dates to be seen easier
+                    let num_bars;
+                    if (Math.max(...data) > 50){
+                        num_bars = 20;
+                    }
+                    else{
+                        num_bars = Math.max(...data);
+                    }
+                    // Calling the histogram function to a variable
+                    const histogram = d3.histogram()
+                        .domain(xScale.domain())
+                        .thresholds(xScale.ticks(num_bars));
+                    // Add the data to the function stored earlier
+                    const bins = histogram(data);
+                    // Scaling the y axis 
+                    const yScale = d3.scaleLinear()
+                        .domain([0, d3.max(bins, d => d.length)])
+                        .range([chartHeight, margin.top]);
+                
+                    const xAxis = d3.axisBottom(xScale);
+                    const yAxis = d3.axisLeft(yScale);
+                    // Appending all the values to the container
+                    svg.append('g')
+                        .attr('transform', `translate(0, ${chartHeight})`)
+                        .call(xAxis);
+                
+                    svg.append('g')
+                        .attr('transform', `translate(${margin.left}, 0)`)
+                        .call(yAxis);
+                    // Add x-axis label
+                    svg.append("text")
+                        .attr("class", "x-label")
+                        .attr("text-anchor", "end")
+                        .attr("x", (chartWidth/2))
+                        .attr("y", chartHeight + margin.top + 20)
+                        .text(category);
+                    // Add y-axis label
+                    svg.append("text")
+                        .attr("class", "y-label")
+                        .attr("text-anchor", "end")
+                        .attr("transform", "rotate(-90)")
+                        .attr("x", margin.top - chartHeight/2)
+                        .attr("y", 20)
+                        .text("Amount");
+                    // Add chart title
+                    svg.append('text')
+                        .attr('class', 'chart-title')
+                        .attr('text-anchor', 'middle')
+                        .attr('x', chartWidth / 2 + margin.left)
+                        .attr('y', margin.top / 2)
+                        .text(category + ' Histogram');
+                    // Creating the bars
+                    svg.selectAll('rect')
+                        .data(bins)
+                        .enter().append('rect')
+                        .attr('x', d => xScale(d.x0) + 1)
+                        .attr('width', d => xScale(d.x1) - xScale(d.x0) - 1)
+                        .attr('y', d => yScale(d.length))
+                        .attr('height', d => chartHeight - yScale(d.length))
+                        .style('fill', 'steelblue');
+                    })
             }
         });
     </script>
