@@ -11,15 +11,118 @@
     <div id="geomap-legend"></div>
     <div id="parallel-coordinates"></div>
     <div id="histogram-container"></div>
+    <div id="heat-map"></div>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
+            countryArr = {};
             geoMap("subscribers")
             parallelCoordinates()
             displayHistogram("subscribers")
+            heatMap()
+
             function resetGraphs(){
                 d3.select('#my_dataviz').selectAll('*').remove();
                 d3.select('#geomap-legend').selectAll('*').remove();
                 d3.select('#parallel-coordinates').selectAll('*').remove();
+            }
+            function heatMap(){
+                d3.csv("youtube_data.csv").then( function(data) {
+                    const margin = {top: 50, right: 50, bottom: 50, left: 50}; 
+                    const width = 880 + margin.left + margin.right;
+                    const height = 880 + margin.top + margin.bottom;
+                    const cellSize = 110;
+                    const labels = ['rank', 'video_views_for_the_last_30_days', 'video views', 'Population', 'uploads', 'created_year','subscribers','highest_yearly_earnings'];
+                    const selectedData = data.map(d => {
+                        return labels.reduce((acc, key) => {
+                            acc[key] = +d[key]; // Convert to numeric values
+                            return acc;
+                        }, {});
+                    });
+
+                    // Calculate correlation matrix using D3
+                    const corrMatrix = d3.transpose(labels.map(a =>
+                        labels.map(b => {
+                            // Calculate correlation coefficient between columns a and b
+                            const meanA = d3.mean(selectedData, d => d[a]);
+                            const meanB = d3.mean(selectedData, d => d[b]);
+                            const covariance = d3.mean(selectedData, d => (d[a] - meanA) * (d[b] - meanB));
+                            const stdDevA = d3.deviation(selectedData, d => d[a]);
+                            const stdDevB = d3.deviation(selectedData, d => d[b]);
+                            return covariance / (stdDevA * stdDevB); // Calculate correlation coefficient
+                        })
+                    ));
+                    console.log("corrMatrix",corrMatrix);
+                    const svg = d3.select('#heat-map')
+                        .append('svg')
+                        .attr('width', width + margin.left + margin.right)
+                        .attr('height', height + margin.top + margin.bottom);
+
+                    const g = svg.append('g')
+                        .attr('transform', `translate(${margin.left},${margin.top})`);
+
+                    const colorScale = d3.scaleLinear()
+                        .domain([-1, 0, 1])
+                        .range(['blue', 'white', 'red']);
+                
+                    const correlationValues = corrMatrix.map(row => Object.values(row)); 
+                    const rows = svg.selectAll('.row')
+                        .data(correlationValues)
+                        .enter().append('g')
+                        .attr('class', 'row')
+                        .attr('transform', (d, i) => `translate(0, ${i * cellSize})`);
+                
+                    const cells = rows.selectAll('.cell')
+                        .data(d => d)
+                        .enter().append('rect')
+                        .attr('class', 'cell')
+                        .attr('width', cellSize)
+                        .attr('height', cellSize)
+                        .attr('x', (d, i) => i * cellSize)
+                        .style('fill', d => colorScale(d));
+                    const rowLabels = svg.selectAll('.row-label')
+                        .data(labels)
+                        .enter().append('text')
+                        .attr('class', 'row-label')
+                        .attr('x', 50)
+                        .attr('y', (d, i) => i * cellSize + cellSize / 2)
+                        .attr('dy', '0.35em')
+                        .attr('text-anchor', 'middle')
+                        .text(d => d)
+                        .style('font-size', '10px');
+                    const colLabels = svg.selectAll('.col-label')
+                        .data(labels)
+                        .enter().append('text')
+                        .attr('class', 'col-label')
+                        .attr('x', (d, i) => i * cellSize + cellSize / 2)
+                        .attr('y', 10)
+                        .attr('dy', '0.35em')
+                        .attr('text-anchor', 'middle')
+                        .text(d => d)
+                        .style('font-size', '10px');
+
+                    const legend = g.append('g')
+                        .attr('class', 'legend')
+                        .attr('transform', `translate(${cellSize * labels.length + 20}, 0)`); 
+                    const legendColors = [-1, -0.5, 0, 0.5, 1];
+                    legend.selectAll('.legend-rect')
+                        .data(legendColors)
+                        .enter().append('rect')
+                        .attr('class', 'legend-rect')
+                        .attr('x', 0)
+                        .attr('y', (d, i) => i * 100)
+                        .attr('width', 20)
+                        .attr('height', 100)
+                        .style('fill', d => colorScale(d));
+                    
+                    legend.selectAll('.legend-label')
+                        .data(legendColors)
+                        .enter().append('text')
+                        .attr('class', 'legend-label')
+                        .attr('x', 30)
+                        .attr('y', (d, i) => i * 100 + 50)
+                        .text(d => d);
+                })
+                
             }
             function parallelCoordinates(){
                 // set the dimensions and margins of the graph
@@ -68,14 +171,22 @@
                 function path(d) {
                     return d3.line()(dimensions.map(function(p) { return [x(p), y[p](d[p])]; }));
                 }
-
                 // Draw the lines
                 svg.selectAll("myPath")
                     .data(data)
                     .join("path")
                     .attr("d",  path)
                     .style("fill", "none")
-                    .style("stroke", "#69b3a2")
+                    .style("stroke", d =>{
+                        let defaultColor = "#69b3a2"
+                        temp_values = Object.values(d)
+                        //console.log("Country Abbr: ", temp_values[8])
+                        for (let country in countryArr) {
+
+                            console.log("country key",countryArr[country])
+                        }
+                        return defaultColor
+                    })
                     .style("opacity", 0.5)
 
                 // Draw the axis:
@@ -222,6 +333,26 @@
                         });
                     mapParts.on('click', function(_, i) {
                         console.log("Country Clicked: ",i.id);
+                        if (!countryArr[i.id]){
+                            console.log("No Country Similar")
+                            // Generate random values for red, green, and blue
+                            const red = Math.floor(Math.random() * 256);
+                            const green = Math.floor(Math.random() * 256);
+                            const blue = Math.floor(Math.random() * 256);
+
+                            // Construct a CSS color string
+                            const color = `rgb(${red}, ${green}, ${blue})`;
+                            console.log("Assigning color to country!")
+                            const let2id = let3ToLet2Mapping[i.id]
+                            countryArr[i.id] = [color, let2id]
+                        }
+                        else if(countryArr[i.id]){
+                            delete countryArr[i.id];
+                        }
+                        console.log("Country Arr: ", countryArr)
+                        d3.select('#parallel-coordinates').selectAll('*').remove();
+                        parallelCoordinates()
+
                     })
                 }).catch(function(error) {
                     // Handle error while loading data
