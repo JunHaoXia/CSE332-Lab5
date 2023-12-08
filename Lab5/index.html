@@ -79,7 +79,7 @@
             function resetGraphs(){
                 d3.select('#my_dataviz').selectAll('*').remove();
                 d3.select('#geomap-legend').selectAll('*').remove();
-                d3.select('#parallel-coordinates').selectAll('*').remove();
+                //d3.select('#parallel-coordinates').selectAll('*').remove();
                 d3.select('#histogram-container').selectAll('*').remove();
             }
             function heatMap(){
@@ -288,7 +288,7 @@
                     console.log("Parallel Column Clicked: ",i);
                     resetGraphs()
                     geoMap(i)
-                    parallelCoordinates()
+                    //parallelCoordinates()
                     displayHistogram(i)
                 })
                 let infographic = d3.select("#infographic")
