@@ -24,3 +24,4 @@ them in a report (10 points for each)
 
  your dashboard should not require webpage scrolling – all
 visualization widgets should be visible at all times 
+![image](https://github.com/JunHaoXia/Youtube-Data-Analysis/assets/99214774/d842c711-8b42-4361-81d3-4ccd42319ebd)
